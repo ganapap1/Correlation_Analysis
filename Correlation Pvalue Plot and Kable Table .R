@@ -22,6 +22,11 @@ library(DT)              # for using %>% which works as a pipe in R code
 library(compare)         # comparing two dataframe columns and also isTRUE() is from compare package
 library(psych)           # to get pair panel correlation plot
 
+#By default, Shiny limits file uploads to 5MB per file. You can modify this limit by using the shiny.maxRequestSize option.
+# where you got: https://shiny.rstudio.com/articles/upload.html#:~:text=By%20default%2C%20Shiny%20limits%20file%20uploads%20to%205MB,of%20app.R%20would%20increase%20the%20limit%20to%2030MB.
+options(shiny.maxRequestSize = 30*1024^2)
+
+
 #################################################################################
 #Actionbutton style function 30px and width 100px
 #################################################################################
@@ -107,12 +112,13 @@ t_col <- function(color, percent = NULL, name = NULL) {
 #################################################################################
 header <- shinydashboardPlus::dashboardHeader(
   title = "Correlation Analysis & Significance",
-  titleWidth = '500px',
+  titleWidth = '475px',
   tags$li(
     tags$head(tags$style(HTML('.navbar-custom-menu {width:500; float: left!important;}'))),  ## where you got: https://stackoverflow.com/questions/60861004/move-logo-to-the-left-side-of-dashboard-header-in-shiny-dashboard
-    
-  actionButton(inputId = 'mydropdown',label =  HTML(paste('<h4><b>',"Tab Menu",'</b>')),style=styleTallButtonBlue()),
-  class = "dropdown"
+    actionButton(inputId = "Previous", label = icon("arrow-left")),
+    actionButton(inputId = 'mydropdown',label =  HTML(paste('<h4><b>',"Tab Menu",'</b>')),style=styleTallButtonBlue()),
+    actionButton(inputId = "Next", label = icon("arrow-right")),
+    class = "dropdown"
   )
 )
 
@@ -122,6 +128,9 @@ header <- shinydashboardPlus::dashboardHeader(
 # controlbar and sidebar which is part of ui 
 #################################################################################
 sidebar <- shinydashboardPlus::dashboardSidebar(
+  id = 'msidebarid',
+  collapsed = TRUE,
+  minified = FALSE,  #this option will completely close the side bar and expand the header text
   useShinyjs(),
   sidebarMenu(id = "tabs",
               menuItem('Overview',
@@ -141,6 +150,9 @@ sidebar <- shinydashboardPlus::dashboardSidebar(
                        icon = icon('line-chart')),
               menuItem('Correlation Pair-Panel Plot',
                        tabName = 'tabpairpanelplot',
+                       icon = icon('line-chart')),
+              menuItem('CI for Correlation',
+                       tabName = 'tabCIforCorr',
                        icon = icon('line-chart')),
               menuItem('Data Table Review',
                        tabName = 'tabdata',
@@ -165,23 +177,10 @@ body <- dashboardBody(
       tabName ="taboverview",
       align = "center",
       box(
-        background = 'black',
-        width = 12,
-        height = 50,
-        scrollX = FALSE,
-        HTML(
-          paste(
-            '<p text-align ="center"><h4><b><i>',
-            'Happy Learning :: Correlation & Significance',
-            '</i></b></p>'
-          )
-        )
-      ),
-      box(
         id = "boxtaboverview",
         width = 12,
-        height = 425,
-        title = NULL,
+        height = 500,
+        title = 'Happy Learning :: Correlation & Significance',
         status = "warning",
         solidHeader = TRUE,
         collapsible = FALSE,
@@ -227,9 +226,11 @@ body <- dashboardBody(
                       
           )
         ), #box closure
+
         box(
+          id = 'mdatastrBox', 
           width = 6,
-          height = "475px",
+          height = 475,
           align = "center",
           title = "Data structure selected",
           status = "warning",
@@ -247,8 +248,8 @@ body <- dashboardBody(
           column(width = 5,
                  HTML(paste('<b>',"Columns in Second dataset",'</b>')),
                  verbatimTextOutput(outputId = "mseconddfstructure")
-          )
-          
+          ),
+          div(style = "height:363px;")  #box height formatting https://community.rstudio.com/t/controlling-the-height-of-fluidrow-in-shiny/4968
         ) #box closure
       ), #fluidrow closure
       fluidRow(
@@ -260,11 +261,6 @@ body <- dashboardBody(
           status = "warning",
           solidHeader = TRUE,
           collapsible = FALSE,
-          label = boxLabel(
-            text = "1",
-            status = "danger",
-            style = "circle"
-          ),
           DT::dataTableOutput('mtblfirst',height = "375px")
         ), #box closure
         box(
@@ -307,7 +303,30 @@ body <- dashboardBody(
       align = "center",
       HTML(paste('<h4><b>',"Correlation Pair-Panel Plot",'</b><h6>',
                  'ALL Columns of Original dataset or only with selected columns','<h5>')),
-      plotOutput('mcorrelationpairpanel',height = '475px',width = '100%')
+      plotOutput('mcorrelationpairpanel',height = 475,width = '100%')
+    ),
+    tabItem(
+      tabName = "tabCIforCorr",
+      align = "center",
+      
+      column(
+        width = 12,
+        align = "center",
+        fluidRow(
+          box(
+            width = 3,
+            height = 500,
+            title = "Variables",
+            status = "warning",
+            solidHeader = TRUE,
+            collapsible = FALSE,
+            x <- uiOutput('radio_Btns')
+            #actionButton(inputId = 'mbtnRadiodelete',label = "Delete Selected Variable",style = styleButtonBlue())
+          ),
+          uiOutput(outputId = "mtableorplot")
+          
+        ) #fluid Row Closure
+      ) #column closure
     ),
     tabItem(
       tabName = "tabdata",
@@ -316,7 +335,7 @@ body <- dashboardBody(
                  'Being Correlation Analysis, while uploading dataset, columns other numeric columns will excluded','<h5>')),
       box(
         width = 12,
-        height = 425,
+        height = 500,
         align = "center",
         title = NULL,
         status = "warning",
@@ -344,8 +363,8 @@ ui <- dashboardPage(
 server <- function(input, output, session) {
   ##this is to hide right side bar
   shinyjs::addCssClass(selector = "body", class = "sidebar-collapse")
-  onevent("mouseenter", "sidebarCollapsed", shinyjs::removeCssClass(selector = "body", class = "sidebar-collapse"))
-  onevent("mouseleave", "sidebarCollapsed", shinyjs::addCssClass(selector = "body", class = "sidebar-collapse"))
+  # onevent("mouseenter", "sidebarCollapsed", shinyjs::removeCssClass(selector = "body", class = "sidebar-collapse"))
+  # onevent("mouseleave", "sidebarCollapsed", shinyjs::addCssClass(selector = "body", class = "sidebar-collapse"))
   
   vmy <- reactiveValues(mydata=NULL,correlation_matrix=NULL,df_types=NULL)
   
@@ -423,7 +442,7 @@ server <- function(input, output, session) {
           fluidRow(
             box(
               width = 12,
-              height = 425,
+              height = '250px',
               align = "center",
               title = "Modify Dataset",
               status = "warning",
@@ -490,6 +509,7 @@ server <- function(input, output, session) {
     ttemp <- vmy$mydata
     vmy$originaldf <- ttemp
     fncreatedftype()
+    fnRadioGrpBtn()
   }) 
   
  
@@ -514,7 +534,7 @@ server <- function(input, output, session) {
                   height = NULL,
                   editable = FALSE,
                   selection = list(mode = "single", target = 'row'),
-                  fillContainer = getOption("DT.fillContainer", TRUE),
+                  fillContainer = getOption("DT.fillContainer", FALSE),
                   options = list(dom = 't',ordering=FALSE, pageLength = -1,class="compact",
                                  initComplete = JS(
                                    "function(settings, json) {",
@@ -583,15 +603,17 @@ server <- function(input, output, session) {
       return()
     }
     
-    temp <- select(vmy$mydata,-vmy$df_types[input$dt_cell_clicked$row,1])
+    temp <- dplyr::select(vmy$mydata,-vmy$df_types[input$dt_cell_clicked$row,1])
     vmy$mydata <- temp
     
-    temp <- select(vmy$originaldf,-vmy$df_types[input$dt_cell_clicked$row,1])
+    temp <- dplyr::select(vmy$originaldf,-vmy$df_types[input$dt_cell_clicked$row,1])
     vmy$originaldf <- temp
     
     removeModal()
     fncreatedftype()
+    fnRadioGrpBtn()
     updateSelectInput(session,inputId = 'mfirstdfcolumn',choices = colnames(vmy$originaldf))
+    click(id = "mFileImport",asis = TRUE)
   })
   
   #################################################################################
@@ -690,7 +712,7 @@ server <- function(input, output, session) {
                   rownames = FALSE,
                   editable = FALSE,
                   selection = list(mode = "single", selected = c(1), target = 'row',color='pink'),
-                  fillContainer = getOption("DT.fillContainer", TRUE),
+                  fillContainer = getOption("DT.fillContainer", FALSE),
                   options = list(
                     lengthMenu = list(c(15, 25, 50,-1), c('15', '25','50' ,'All')),
                     paging = TRUE,
@@ -731,7 +753,7 @@ server <- function(input, output, session) {
                   rownames = FALSE,
                   editable = FALSE,
                   selection = list(mode = "single", selected = c(1), target = 'row',color='pink'),
-                  fillContainer = getOption("DT.fillContainer", TRUE),
+                  fillContainer = getOption("DT.fillContainer", FALSE),
                   options = list(
                     lengthMenu = list(c(15, 25, 50,-1), c('15', '25','50' ,'All')),
                     paging = TRUE,
@@ -764,7 +786,7 @@ server <- function(input, output, session) {
                   rownames = FALSE,
                   editable = FALSE,
                   selection = list(mode = "single", selected = c(1), target = 'row',color='pink'),
-                  fillContainer = getOption("DT.fillContainer", TRUE),
+                  fillContainer = getOption("DT.fillContainer", FALSE),
                   options = list(
                     lengthMenu = list(c(15, 25, 50,-1), c('15', '25','50' ,'All')),
                     paging = TRUE,
@@ -843,6 +865,7 @@ server <- function(input, output, session) {
       
     })
     
+    fnConfInterval()
   }
   
   
@@ -933,7 +956,7 @@ server <- function(input, output, session) {
                             "direction of the linear relationship between two variables, while a simple linear regression", 
                             "analysis estimates parameters in a linear equation that can be used to predict values of", 
                             "one variable based on the other. ")),
-                 br(),
+                 br(),br(),
                  HTML(paste('<h5><b>',"Correlation - Positive / Negative / Zero:",'</b><br><h6>')),
                  HTML(paste('<h5>',
                             "The Pearson correlation coefficient, r, can take on values between -1 and 1. The further away r is", 
@@ -941,6 +964,7 @@ server <- function(input, output, session) {
                             "the direction of the relationship. If r is positive, then as one variable increases, the other tends to increase.", 
                             "If r is negative, then as one variable increases, the other tends to decrease. A perfect linear", 
                             "relationship will have r = -1 or r = 1; if r is zero, there is no linear relationship between the variables.")),
+                 br(),br(),
                  HTML(paste('<h5><b>',"Correlation Study - Hypothesis:",'</b><br><h5>')),
                  HTML(paste('<h5>',
                             "In Correlation study, the NULL HYPOTHESIS is that there is NO RELATIONSHIP between the two", 
@@ -958,9 +982,10 @@ server <- function(input, output, session) {
                    "Correlation means there is a relationship or pattern between the values of two variables.   Causation", 
                    "means that one event causes another event to occur. Correlation does not talk about causation, eg strong", 
                    "correlation or relationship could be coincidental, or a third factor may be causing both variables to change." )),
+        br(),br(),
         HTML(paste('<h5><b>',"References: Thanks to",'</b><h5>')),
         HTML(paste(urlcorre1,urlcorre2,urlcorre3)),
-        br(),
+        br(),br(),
         HTML(paste('<h5><b>',"About me:",'</b><br><h5>')),
         HTML(paste0('<h5>',"I am a Chartered Accountant having 25+ years of experience in Finance & Accounting.",
                     " The Data visualization and Data Science are always at the back of my mind.",
@@ -989,9 +1014,6 @@ server <- function(input, output, session) {
     
     R <- vmy$correlation_matrix$r # Matrix of correlation coeficients
     p <- vmy$correlation_matrix$P # Matrix of p-value 
-rrr <<- R
-ppp <<- p
-mmm <<- vmy$mydata
 
     ## Define notions for significance levels; spacing is important.
     mystars <- ifelse(p <= .001, "***", ifelse(p <= .01, "** ", ifelse(p <= .05, "*  ", ifelse(p <= .1, ".  ", "    "))))
@@ -1108,7 +1130,6 @@ mmm <<- vmy$mydata
      }
 
    library(psych)
-
    pairs.panels(vmy$mfirstdf(),
                 smooth = TRUE,      # If TRUE, draws loess smooths
                 scale = FALSE,      # If TRUE, scales the correlation text font
@@ -1127,12 +1148,17 @@ mmm <<- vmy$mydata
                 stars = TRUE)       # If TRUE, adds significance level with stars
  })
 
+
+   
 observeEvent(input$moverviewBTN,{
   updateTabsetPanel(session = session, inputId = "tabs",selected = "taboverview")
   removeModal()
 })
 observeEvent(input$mdatatabBTN,{
   updateTabsetPanel(session = session, inputId = "tabs",selected = "tabdataset")
+  if (length(input$file)==0){
+    click(id = "mFileImport",asis = TRUE)
+  }
   removeModal()
 })
 observeEvent(input$mcorrelationBTN,{
@@ -1155,7 +1181,10 @@ observeEvent(input$mDatasetBTN,{
   updateTabsetPanel(session = session, inputId = "tabs",selected = "tabdata")
   removeModal()
 })
-
+observeEvent(input$mCIforCorrBTN,{
+  updateTabsetPanel(session = session, inputId = "tabs",selected = "tabCIforCorr")
+  removeModal()
+})
 
 
 observeEvent(input$mydropdown,{
@@ -1175,6 +1204,8 @@ observeEvent(input$mydropdown,{
           
           HTML(paste('<h4>',actionLink(inputId = 'mCorrCircleBTN',label = "Correlation Circle Plot"))),
           HTML(paste('<h4>',actionLink(inputId = 'mCorrPairBTN',label = "Correlation Pair Plot"))),
+          
+          HTML(paste('<h4>',actionLink(inputId = 'mCIforCorrBTN',label = "CI for Correlation Plot"))),
           HTML(paste('<h4>',actionLink(inputId = 'mDatasetBTN',label = "View Dataset Table")))
           
         )# fluidRow closure
@@ -1186,27 +1217,198 @@ observeEvent(input$mydropdown,{
 })
 
 
+fnConfInterval <- function(){
+# Confidence Interval for a Correlation Coefficient Calculator
+# A confidence interval for a correlation coefficient is a range of values that is likely to contain a population correlation coefficient with a certain level of confidence.
 
-#Confidence interval for Correlation
-#Step 1:  Perform Fisher transformation.
-cd4 <- mmm
+mrrr <- vmy$correlation_matrix$r # Matrix of correlation coeficients
+mppp <- vmy$correlation_matrix$P # Matrix of p-value 
+
+library(psychometric) # to calcualte confidence interval load package with function  #https://www.r-bloggers.com/2010/11/how-to-calculate-confidence-intervals-of-correlations-with-r/
+
+# mrrr <- as.matrix(mrrr)
+# mrrr[upper.tri(mrrr, diag = TRUE)] <- ""
+# mrrr <- as.data.frame(mrrr)
 
 
-ct = cor.test(mtcars$mpg, mtcars$cyl, method="pearson")
-cin <- cor.test(cd4$mpg, cd4$cyl, method = "pearson", conf.level = 0.95)
-cin$conf.int[1]
-cin$conf.int[2]
-ct$conf.int[1:2]   
+vmy$ci_matrix <- data.frame(V1 = 'text',
+                  V2 = 'text',
+                  Corr = 0,
+                  n    = 0,
+                  #pval = 0,
+                  CI   = 0,
+                  LL  = 0,
+                  UL  = 0)[-1,]
 
 
-t <- apply(mtcars[, -1], 2, cor.test, mtcars$mpg, method="pearson")
-sapply(t, "[[", "conf.int")
+for (c in colnames(mrrr)){
+  for (i in rownames(mrrr)){
+    if (mrrr[i,c] != ""){
+      vmy$ci_matrix <- vmy$ci_matrix%>%add_row(
+        V1 = c,
+        V2 = i,
+        Corr = as.numeric(mrrr[i,c]),
+        n    = nrow(vmy$mydata),
+        #pval = as.numeric(mppp[i,c]),
+        LL  =  CIr(r=as.numeric(mrrr[i,c]), n = nrow(vmy$mydata), level = .95)[1],
+        UL  =  CIr(r=as.numeric(mrrr[i,c]), n = nrow(vmy$mydata), level = .95)[2],
+        CI  =  ( CIr(r=as.numeric(mrrr[i,c]), n = nrow(vmy$mydata), level = .95)[2]-
+                   CIr(r=as.numeric(mrrr[i,c]), n = nrow(vmy$mydata), level = .95)[1]  )/2
+      )
+    }
+  }
+}
 
-cim <- data.frame(sapply(t, "[[", "conf.int"))
+library("tibble")   # this as_data_frame function is from tibble package
+dtemp <- as_data_frame(vmy$ci_matrix)
+vmy$ci_matrix <- dtemp%>%dplyr::filter(V1!=V2)
 
-t$conf.int[1:2]  
 
-t$cyl$conf.int[1]
+}
+
+
+fnRadioGrpBtn <- function(){
+  output$radio_Btns <- renderUI({
+    # options <- colnames(vmy$mydata) # The options are dynamically generated on the server
+    options <- unique(vmy$ci_matrix$V1) # The options are dynamically generated on the server
+  
+    radioGroupButtons(
+      inputId = "radioreply",
+      label = "Select variable",
+      choices = options,
+      individual = TRUE,
+      size = "sm", #size options are "xl", "sm","normal","lg"
+      checkIcon = list(
+        yes = tags$i(class = "fa fa-circle",
+                     style = "color: red"),
+        no = tags$i(class = "fa fa-circle-o",
+                    style = "color: steelblue"))
+    )# radioGroupbtn closure
+  }) # renderUI closure
+} #function closure
+
+
+
+  output$mtableorplot <- renderUI({
+    box(
+      width = 9,
+      height = 500,
+      title = textOutput("mplottitle"),
+      status = "warning",
+      solidHeader = TRUE,
+      collapsible = FALSE,
+      
+      plotOutput('mmultiplot', height = 450)
+    ) #box closure
+  })    
+
+
+output$mmultiplot <-renderPlot({
+  par(mfrow = c(1, 1))
+  
+  library(metan)
+  library(dplyr)
+  tryCatch({ 
+  vmy$ci_matrix%>%dplyr::filter(V1 == input$radioreply)%>%
+    plot_ci()
+  }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")})
+  
+})
+
+
+
+
+
+### delete selected rows part
+### this is warning messge for deleting
+observeEvent(input$mbtnRadiodelete,{
+  showModal(
+    if(length(input$radioreply)>=1 ){
+      modalDialog(
+        title = "Warning",
+        paste("Are you sure delete variable:",input$radioreply ),
+        footer = tagList(
+          modalButton("Cancel"),
+          actionButton("mRadiok", "Yes")
+        ), easyClose = TRUE)
+    }else{
+      modalDialog(
+        title = "Warning",
+        paste("Please select the variable that you want to delete!" ),easyClose = TRUE
+      )
+    }
+    
+  )
+})
+
+
+### If user say OK, then delete the selected rows
+observeEvent(input$mRadiok, {
+  #temp <- select(vmy$ci_matrix,-c(input$radioreply))
+  temp <- vmy$ci_matrix%>%dplyr::filter(V2 != input$radioreply)
+  vmy$ci_matrix <- temp
+  removeModal()
+  
+  options <- unique(vmy$ci_matrix$V1) # The options are dynamically generated on the server
+  updateRadioGroupButtons(session,
+                          inputId = "radioreply",
+                          choices = options,
+                          size = "sm", #size options are "xl", "sm","normal","lg"
+                          checkIcon = list(
+                            yes = tags$i(class = "fa fa-circle",
+                                         style = "color: red"),
+                            no = tags$i(class = "fa fa-circle-o",
+                                        style = "color: steelblue"))
+  )
+})
+
+
+# here we fix the Title for each plot
+output$mplottitle <- renderText({
+  paste("CI plot between",input$radioreply,"and ALL other variables")
+})
+
+
+###################### right left arrow for the next and previous tab  where you got: https://stackoverflow.com/questions/44309328/generic-button-for-go-to-next-and-previous-tabitem-shiny
+
+global <- reactiveValues(tab_id = "")
+tab_id <- c('taboverview','tabdataset','tabcorrelation','tabpvalue',
+            'tabcircleplot', 'tabpairpanelplot','tabCIforCorr','tabdata')
+Current <- reactiveValues(
+  Tab = "taboverview"
+)
+
+
+observeEvent(
+  input[["tabs"]],
+  {
+    Current$Tab <- input[["tabs"]]
+  }
+)
+
+observeEvent(
+  input[["Previous"]],
+  {
+    tab_id_position <- match(Current$Tab, tab_id) - 1
+    if (isTRUE(tab_id_position == 0)) tab_id_position <- length(tab_id)
+    Current$Tab <- tab_id[tab_id_position]
+    updateTabItems(session, "tabs", tab_id[tab_id_position]) 
+  }
+)
+
+observeEvent(
+  input[["Next"]],
+  {
+    tab_id_position <- match(Current$Tab, tab_id) + 1
+    if (isTRUE(tab_id_position > length(tab_id))) tab_id_position <- 1
+    Current$Tab <- tab_id[tab_id_position]
+    updateTabItems(session, "tabs", tab_id[tab_id_position]) 
+  }
+)
+
+###### end of code for go next and previous
+
+
 
 
 
